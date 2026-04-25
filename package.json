@@ -1,0 +1,13 @@
+{
+  "name": "yemot-gemini-bot",
+  "version": "1.0.0",
+  "description": "בוט חכם לימות המשיח עם Gemini AI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2"
+  }
+}
