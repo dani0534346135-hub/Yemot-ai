@@ -8,20 +8,17 @@ app.use(express.json());
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const conversations = {};
 
-// הגדרת מהירות הקראה: 0 היא המהירות הרגילה, מספרים שליליים (כמו -1 או -2) זה לאט יותר
-const SPEECH_SPEED = "-1"; 
-
 function yemotSend(res, text) {
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  // הוספת הפרמטר tts_speed להאטת הקצב
-  res.send(`tts_speed=${SPEECH_SPEED}&${text}`);
+  // חזרנו למבנה נקי בלי פרמטרים נוספים שמשבשים את ימות המשיח
+  res.send(text);
 }
 
 async function askGemini(phone, userText, topic) {
   if (!conversations[phone]) conversations[phone] = [];
 
-  // הוראות ל-AI לכתוב בצורה קריאה עם הרבה סימני פיסוק להפסקות
-  const systemText = "אתה עוזר חכם. ענה בעברית ברורה. השתמש בהרבה פסיקים ונקודות כדי שההקראה תהיה איטית וקריאה. ענה בקצרה (עד 2 משפטים).";
+  // כאן הסוד: ביקשתי ממנו להשתמש בהרבה פסיקים ונקודות. זה מאט את ההקראה בצורה טבעית ובטוחה.
+  const systemText = "אתה עוזר חכם. ענה בעברית. חובה להשתמש בהרבה פסיקים ונקודות בין המילים כדי שההקראה הטלפונית תהיה איטית וברורה. ענה בקצרה (עד 2 משפטים).";
   
   conversations[phone].push({ role: "user", parts: [{ text: userText }] });
 
@@ -38,15 +35,15 @@ async function askGemini(phone, userText, topic) {
     });
 
     const data = await response.json();
-    if (data.error) return "שגיאה בחיבור";
+    if (data.error) return "סליחה, יש תקלה זמנית.";
 
     let reply = data.candidates[0].content.parts[0].text;
     conversations[phone].push({ role: "model", parts: [{ text: reply }] });
 
-    // ניקוי תווים מוזרים שמשבשים את ההקראה
+    // מנקה הכל חוץ מאותיות, מספרים, פסיקים ונקודות
     return reply.replace(/[^\u0590-\u05FFa-zA-Z0-9\s,.]/g, " ").replace(/\s+/g, " ").trim();
   } catch (error) {
-    return "תקלה זמנית";
+    return "תקלה בחיבור.";
   }
 }
 
@@ -59,7 +56,7 @@ app.all("/ivr", async (req, res) => {
 
   if (userText && userText.length > 1) {
     const answer = await askGemini(phone, userText, topic);
-    // ביטול אישור (no) כדי שירוץ מהר בתפריטים
+    // הקפדה על no כדי שלא יבקש אישור מיותר
     return yemotSend(res, `id_list_message=t-${answer}&read=t-לשאלה נוספת הקישו 1 לתפריט 9=ApiDTMF,1,1,1,Number,no,no,no&call_api=https://${host}/ivr&`);
   }
 
@@ -67,8 +64,7 @@ app.all("/ivr", async (req, res) => {
   const topics = { "1": "general", "2": "recipes", "3": "health", "4": "torah" };
   
   if (topics[key]) {
-    // כאן השארתי yes באישור ההקלדה כי זה טקסט חופשי וחשוב לוודא שלא טעית
-    return yemotSend(res, `read=t-נא הקש שאלתך ובסיומה סולמית=user_query,,1,1,100,HebrewKeyboard,yes,no,,&call_api=https://${host}/ivr?topic=${topics[key]}&`);
+    return yemotSend(res, `read=t-נא הקלד שאלתך ובסיומה סולמית=user_query,,1,1,100,HebrewKeyboard,yes,no,,&call_api=https://${host}/ivr?topic=${topics[key]}&`);
   }
 
   if (key === "9" || !key) conversations[phone] = [];
