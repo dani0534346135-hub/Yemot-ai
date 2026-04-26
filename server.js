@@ -18,7 +18,7 @@ async function askGemini(phone, userText, topic) {
   if (!conversations[phone]) conversations[phone] = [];
 
   const systemPrompts = {
-    general: "אתה עוזר אישי חכם. עונה בעברית בלבד, בקצרה ובבהירות, עד 3 משפטים. אל תשתמש בסימנים מיוחדים.",
+    general: "אתה עוזר אישי חכם. עונה בעברית בלבד, בקצרה עד 3 משפטים. בלי תווים מיוחדים.",
     recipes: "אתה שף מומחה. עונה על מתכונים בקצרה עד 3 משפטים.",
     health: "אתה יועץ בריאות. עונה בקצרה עד 3 משפטים. תמיד המלץ להתייעץ עם רופא.",
     torah: "אתה בקי בתורה ויהדות. עונה בקצרה עד 3 משפטים.",
@@ -49,73 +49,53 @@ async function askGemini(phone, userText, topic) {
 }
 
 // ============================
-// תפריט ניתוב ראשי
+// ה-Route המרכזי - מטפל בהכל
 // ============================
-app.all("/ivr", (req, res) => {
+app.all("/ivr", async (req, res) => {
   const params = { ...req.query, ...req.body };
   const phone = params.ApiPhone || "unknown";
+  const host = req.headers.host;
+  
+  // 1. זיהוי האם זו שאלה שנשלחה
+  const userText = params.user_query || "";
+  const topic = params.topic || "";
+
+  if (userText && userText.length > 1) {
+    console.log(`[ASK] נושא: ${topic} | שאלה: ${userText}`);
+    try {
+      const answer = await askGemini(phone, userText, topic);
+      return yemotSend(res,
+        `id_list_message=t-${answer}&` +
+        `read=t-לשאלה נוספת הקישו 1 לתפריט ראשי הקישו 9=ApiDTMF,1,1,1,Number,no,yes,no&` +
+        `call_api=https://${host}/ivr&`
+      );
+    } catch (err) {
+      return yemotSend(res, `id_list_message=t-שגיאה בעיבוד&call_api=https://${host}/ivr&`);
+    }
+  }
+
+  // 2. זיהוי בחירת נושא
   const key = params.ApiDTMF || "";
-  const host = req.headers.host;
+  console.log(`[IVR] מקש: ${key}`);
 
-  console.log(`[IVR] מקש שהתקבל: ${key}`);
-
-  // ניתוב לפי לחיצה בתפריט הראשי
-  if (key === "1") return yemotSend(res, buildTopicMenu("general", host));
-  if (key === "2") return yemotSend(res, buildTopicMenu("recipes", host));
-  if (key === "3") return yemotSend(res, buildTopicMenu("health", host));
-  if (key === "4") return yemotSend(res, buildTopicMenu("torah", host));
+  const topics = { "1": "general", "2": "recipes", "3": "health", "4": "torah" };
   
-  conversations[phone] = [];
-  return yemotSend(res, buildMainMenu(host));
-});
-
-// ============================
-// קבלת שאלה והחזרת תשובה
-// ============================
-app.all("/ask", async (req, res) => {
-  const params = { ...req.query, ...req.body };
-  const phone = params.ApiPhone || "unknown";
-  const topic = params.topic || "general";
-  const host = req.headers.host;
-  
-  // בדיקה של כל הפרמטרים האפשריים שימות המשיח שולחים
-  const userText = params.user_query || params.ApiDTMF || params.val || "";
-
-  console.log(`[ASK] נושא: ${topic} | טקסט: ${userText}`);
-
-  // אם הטקסט הוא רק ספרה אחת (1 או 9), סימן שהמשתמש לוחץ על תפריט ולא שואל שאלה
-  if (!userText || userText.length <= 1) {
-      console.log("טקסט קצר מדי או ריק, מחזיר לבקשת שאלה");
-      return yemotSend(res, buildTopicMenu(topic, host));
-  }
-
-  try {
-    const answer = await askGemini(phone, userText, topic);
-    return yemotSend(res,
-      `id_list_message=t-${answer}&` +
-      `read=t-לשאלה נוספת הקישו 1 לתפריט ראשי הקישו 9=ApiDTMF,1,1,1,Number,no,yes,no&` +
-      `call_api=https://${host}/ivr&`
+  if (topics[key]) {
+    const topicName = { general: "שאלה כללית", recipes: "מתכונים", health: "בריאות", torah: "יהדות" }[topics[key]];
+    return yemotSend(res, 
+      `id_list_message=t-בחרת ${topicName}&` +
+      `read=t-נא הקש את שאלתך ובסיומה סולמית=user_query,,1,1,100,HebrewKeyboard,yes,no,,&` +
+      `call_api=https://${host}/ivr?topic=${topics[key]}&` // שים לב: חוזר לאותו Route עם Topic
     );
-  } catch (err) {
-    return yemotSend(res, `id_list_message=t-אירעה שגיאה בעיבוד&call_api=https://${host}/ivr&`);
   }
-});
 
-function buildMainMenu(host) {
-  return (
+  // 3. תפריט ראשי (ברירת מחדל)
+  conversations[phone] = [];
+  return yemotSend(res, 
     `id_list_message=t-שלום ברוך הבא לעוזר החכם&` +
     `read=t-לשאלה כללית 1 למתכונים 2 לבריאות 3 ליהדות 4=ApiDTMF,1,1,1,Number,no,yes,no&` +
     `call_api=https://${host}/ivr&`
   );
-}
-
-function buildTopicMenu(topic, host) {
-  const names = { general: "שאלה כללית", recipes: "מתכונים", health: "בריאות", torah: "יהדות" };
-  return (
-    `id_list_message=t-בחרת ${names[topic]}&` +
-    `read=t-נא הקש את שאלתך ובסיומה סולמית=user_query,,1,1,100,HebrewKeyboard,yes,no,,&` +
-    `call_api=https://${host}/ask?topic=${topic}&`
-  );
-}
+});
 
 app.listen(process.env.PORT || 3000);
