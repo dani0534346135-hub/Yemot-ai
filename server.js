@@ -14,56 +14,59 @@ function yemotSend(res, text) {
   res.send(text);
 }
 
-// פונקציה משופרת לשאילת Gemini
+// פונקציה שבודקת איזה מודל הכי טוב זמין לך
+async function getAvailableModel() {
+  const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+  for (const model of models) {
+    try {
+      const check = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}?key=${GEMINI_API_KEY}`);
+      if (check.ok) return model;
+    } catch (e) {}
+  }
+  return "gemini-1.5-flash"; // ברירת מחדל
+}
+
 async function askGemini(phone, userText, topic) {
   if (!conversations[phone]) conversations[phone] = [];
 
   const systemPrompts = {
-    general: "אתה עוזר אישי חכם. עונה בעברית בלבד, בקצרה עד 3 משפטים. בלי תווים מיוחדים.",
-    recipes: "אתה שף מומחה. עונה על מתכונים בקצרה עד 3 משפטים.",
-    health: "אתה יועץ בריאות. עונה בקצרה עד 3 משפטים. תמיד המלץ להתייעץ עם רופא.",
-    torah: "אתה בקי בתורה ויהדות. עונה בקצרה עד 3 משפטים.",
+    general: "עוזר אישי. עברית בלבד. קצר (עד 3 משפטים). בלי סימנים מיוחדים.",
+    recipes: "שף מומחה. מתכונים קצרים בעברית.",
+    health: "יועץ בריאות. עברית. קצר. המלץ על רופא.",
+    torah: "בקי בתורה. עברית. קצר.",
   };
 
   const systemText = systemPrompts[topic] || systemPrompts.general;
-  
-  // הוספת השאלה הנוכחית להיסטוריה
   conversations[phone].push({ role: "user", parts: [{ text: userText }] });
 
+  const modelName = await getAvailableModel();
+  console.log(`[MODEL CHECK] Using: ${modelName}`);
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemText }] },
-          contents: conversations[phone].slice(-10), // שולח רק 10 הודעות אחרונות
-        }),
-      }
-    );
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemText }] },
+        contents: conversations[phone].slice(-10),
+      }),
+    });
 
     const data = await response.json();
-    
-    // בדיקה אם ה-API החזיר שגיאה
+
     if (data.error) {
-      console.error("Gemini API Error:", JSON.stringify(data.error));
+      console.error("Gemini Error:", data.error.message);
       throw new Error(data.error.message);
     }
 
-    if (!data.candidates || !data.candidates[0].content) {
-      console.error("Gemini Unexpected Response:", JSON.stringify(data));
-      throw new Error("No content in response");
-    }
-
-    const reply = data.candidates[0].content.parts[0].text;
-    
-    // שמירת התשובה בזיכרון
+    let reply = data.candidates[0].content.parts[0].text;
     conversations[phone].push({ role: "model", parts: [{ text: reply }] });
 
-    return reply.replace(/[*#_~`\-\.=&]/g, " ").replace(/\s+/g, " ").trim();
+    return reply.replace(/[^\u0590-\u05FFa-zA-Z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   } catch (error) {
-    console.error("Error in askGemini:", error);
+    console.error("AskGemini Fail:", error.message);
     throw error;
   }
 }
@@ -72,24 +75,15 @@ app.all("/ivr", async (req, res) => {
   const params = { ...req.query, ...req.body };
   const phone = params.ApiPhone || "unknown";
   const host = req.headers.host;
-  
   const userText = params.user_query || "";
   const topic = params.topic || "";
 
-  // אם הגיעה שאלה
   if (userText && userText.length > 1) {
-    console.log(`[ASK] טלפון: ${phone} | נושא: ${topic} | שאלה: ${userText}`);
     try {
       const answer = await askGemini(phone, userText, topic);
-      return yemotSend(res,
-        `id_list_message=t-${answer}&` +
-        `read=t-לשאלה נוספת הקישו 1 לתפריט ראשי הקישו 9=ApiDTMF,1,1,1,Number,no,yes,no&` +
-        `call_api=https://${host}/ivr&`
-      );
+      return yemotSend(res, `id_list_message=t-${answer}&read=t-לשאלה נוספת 1 לתפריט 9=ApiDTMF,1,1,1,Number,no,yes,no&call_api=https://${host}/ivr&`);
     } catch (err) {
-      // כאן מודפסת השגיאה שגורמת ל"שגיאה בעיבוד"
-      console.error(`[CRITICAL ERROR] ${err.message}`);
-      return yemotSend(res, `id_list_message=t-סליחה אירעה שגיאה בעיבוד השאלה נסו שנית&call_api=https://${host}/ivr&`);
+      return yemotSend(res, `id_list_message=t-סליחה יש תקלה זמנית נסה שוב&call_api=https://${host}/ivr&`);
     }
   }
 
@@ -97,21 +91,11 @@ app.all("/ivr", async (req, res) => {
   const topics = { "1": "general", "2": "recipes", "3": "health", "4": "torah" };
   
   if (topics[key]) {
-    const topicName = { general: "שאלה כללית", recipes: "מתכונים", health: "בריאות", torah: "יהדות" }[topics[key]];
-    return yemotSend(res, 
-      `id_list_message=t-בחרת ${topicName}&` +
-      `read=t-נא הקש את שאלתך ובסיומה סולמית=user_query,,1,1,100,HebrewKeyboard,yes,no,,&` +
-      `call_api=https://${host}/ivr?topic=${topics[key]}&`
-    );
+    return yemotSend(res, `read=t-הקש שאלתך וסולמית=user_query,,1,1,100,HebrewKeyboard,yes,no,,&call_api=https://${host}/ivr?topic=${topics[key]}&`);
   }
 
-  // תפריט ראשי
   if (key === "9" || !key) conversations[phone] = [];
-  return yemotSend(res, 
-    `id_list_message=t-שלום ברוך הבא לעוזר החכם&` +
-    `read=t-לשאלה כללית 1 למתכונים 2 לבריאות 3 ליהדות 4=ApiDTMF,1,1,1,Number,no,yes,no&` +
-    `call_api=https://${host}/ivr&`
-  );
+  return yemotSend(res, `read=t-כללית 1 מתכונים 2 בריאות 3 תורה 4=ApiDTMF,1,1,1,Number,no,yes,no&call_api=https://${host}/ivr&`);
 });
 
 app.listen(process.env.PORT || 3000);
