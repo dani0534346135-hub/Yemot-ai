@@ -16,7 +16,7 @@ function yemotSend(res, text) {
 async function askGemini(phone, userText, topic) {
   if (!conversations[phone]) conversations[phone] = [];
 
-  const systemText = "אתה עוזר חכם. ענה בעברית, קצר מאוד (עד 2 משפטים). ללא סימנים מיוחדים.";
+  const systemText = "אתה עוזר אישי. ענה בעברית בצורה מפורטת ועשירה, אך השתדל לא לעבור את ה-100 מילים כדי שיהיה נוח להקשיב בטלפון.";
   conversations[phone].push({ role: "user", parts: [{ text: userText }] });
 
   // עדכון המודל לפי מה שמופיע אצלך ב-AI Studio
