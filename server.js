@@ -63,7 +63,7 @@ async function askGemini(phone, userText, topic) {
     parts: [{ text: reply }],
   });
 
-  // נקה סימנים שמפריעים לימות המשיח
+  // ניקוי תווים מיוחדים שיכולים לשבש את ה-API של ימות המשיח
   return reply
     .replace(/[*#_~`\-\.=&]/g, " ")
     .replace(/\s+/g, " ")
@@ -81,16 +81,16 @@ app.all("/ivr", (req, res) => {
 
   console.log(`כניסה מ: ${phone} | מקש: ${key}`);
 
-  if (!key) conversations[phone] = [];
+  // אם המשתמש בחר לחזור לתפריט או נכנס פעם ראשונה
+  if (!key || key === "9") {
+      conversations[phone] = [];
+      return yemotSend(res, buildMainMenu(host));
+  }
 
   if (key === "1") return yemotSend(res, buildTopicMenu("general", host));
   if (key === "2") return yemotSend(res, buildTopicMenu("recipes", host));
   if (key === "3") return yemotSend(res, buildTopicMenu("health", host));
   if (key === "4") return yemotSend(res, buildTopicMenu("torah", host));
-  if (key === "9") {
-    conversations[phone] = [];
-    return yemotSend(res, buildMainMenu(host));
-  }
 
   return yemotSend(res, buildMainMenu(host));
 });
@@ -113,10 +113,10 @@ app.all("/ask", async (req, res) => {
     const answer = await askGemini(phone, userText, topic);
     console.log(`תשובה: ${answer}`);
 
+    // תיקון: שימוש ב-read כדי להמתין למקש מהמשתמש
     return yemotSend(res,
       `id_list_message=t-${answer}&` +
-      `id_list_message=t-לשאלה נוספת לחץ 1 לתפריט ראשי לחץ 9&` +
-      `id_list_message=1_9&` +
+      `read=t-לשאלה נוספת לחץ 1 לתפריט ראשי לחץ 9=ApiDTMF,1,1,1,Number,no,yes,no&` +
       `call_api=https://${host}/ivr&`
     );
   } catch (err) {
@@ -129,16 +129,12 @@ app.all("/ask", async (req, res) => {
 });
 
 // ============================
-// פונקציות עזר
+// פונקציות עזר לבניית תגובות
 // ============================
 function buildMainMenu(host) {
   return (
     `id_list_message=t-שלום ברוך הבא לעוזר החכם&` +
-    `id_list_message=t-לשאלה כללית לחץ 1&` +
-    `id_list_message=t-למתכונים ובישול לחץ 2&` +
-    `id_list_message=t-לעצות בריאות לחץ 3&` +
-    `id_list_message=t-לשאלות תורה ויהדות לחץ 4&` +
-    `id_list_message=1_2_3_4&` +
+    `read=t-לשאלה כללית לחץ 1 למתכונים לחץ 2 לעצות בריאות לחץ 3 לשאלות תורה לחץ 4=ApiDTMF,1,1,1,Number,no,yes,no&` +
     `call_api=https://${host}/ivr&`
   );
 }
@@ -153,15 +149,14 @@ function buildTopicMenu(topic, host) {
 
   return (
     `id_list_message=t-בחרת ${names[topic]}&` +
-    `id_list_message=t-הקלד את שאלתך ולחץ סולמית&` +
-    `read=t-הקלד ולחץ סולמית=ApiDTMF,,1,1,60,HebrewKeyboard,yes,no,,&` +
+    `read=t-הקלט את שאלתך ובסיום לחץ סולמית=ApiDTMF,,1,1,60,HebrewKeyboard,yes,no,,&` +
     `call_api=https://${host}/ask?topic=${topic}&`
   );
 }
 
 app.get("/", (req, res) => {
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  res.send("השרת פועל! ✅");
+  res.send("השרת פועל ומחובר לימות המשיח! ✅");
 });
 
 const PORT = process.env.PORT || 3000;
