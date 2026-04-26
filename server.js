@@ -16,7 +16,7 @@ function yemotSend(res, text) {
 async function askGemini(phone, userText, topic) {
   if (!conversations[phone]) conversations[phone] = [];
 
-  const systemText = "אתה עוזר חכם. ענה בעברית, קצר מאוד (עד 2 משפטים). ללא סימנים מיוחדים.";
+  const systemText = "אתה עוזר אישי. ענה בעברית בצורה מפורטת ועשירה, אך השתדל לא לעבור את ה-100 מילים כדי שיהיה נוח להקשיב בטלפון.";
   conversations[phone].push({ role: "user", parts: [{ text: userText }] });
 
   // עדכון המודל לפי מה שמופיע אצלך ב-AI Studio
@@ -68,7 +68,7 @@ app.all("/ivr", async (req, res) => {
   }
 
   if (key === "9" || !key) conversations[phone] = [];
-  return yemotSend(res, `id_list_message=t-שלום ברוכים הבאים&read=t-לכללית 1 מתכונים 2 בריאות 3 יהדות 4=ApiDTMF,1,1,1,Number,no,yes,no&call_api=https://${host}/ivr&`);
+  return yemotSend(res, `id_list_message=t-שלום ברוכים הבאים לעוזר האישי של דניאל כרייף&read=t-לכללית 1 מתכונים 2 בריאות 3 יהדות 4=ApiDTMF,1,1,1,Number,no,yes,no&call_api=https://${host}/ivr&`);
 });
 
 app.listen(process.env.PORT || 3000);
