@@ -65,9 +65,10 @@ async function askGemini(phone, userText, topic) {
 // ============================
 // תפריט ראשי
 // ============================
-app.post("/ivr", (req, res) => {
-  const key = req.body.ApiDTMF || req.body.key || "";
-  const phone = req.body.ApiPhone || req.body.phone || "unknown";
+app.all("/ivr", (req, res) => {
+  const body = { ...req.query, ...req.body };
+  const key = body.ApiDTMF || body.key || "";
+  const phone = body.ApiPhone || body.phone || "unknown";
   const host = req.headers.host;
 
   if (!key) conversations[phone] = [];
@@ -87,10 +88,11 @@ app.post("/ivr", (req, res) => {
 // ============================
 // קבלת שאלה ותשובה
 // ============================
-app.post("/ask", async (req, res) => {
-  const phone = req.body.ApiPhone || req.body.phone || "unknown";
-  const userText = req.body.ApiDTMF || req.body.text || "";
-  const topic = req.query.topic || "general";
+app.all("/ask", async (req, res) => {
+  const body = { ...req.query, ...req.body };
+  const phone = body.ApiPhone || body.phone || "unknown";
+  const userText = body.ApiDTMF || body.text || "";
+  const topic = req.query.topic || body.topic || "general";
   const host = req.headers.host;
 
   if (!userText || userText === "#") return res.send(buildMenu(topic, host));
@@ -98,15 +100,15 @@ app.post("/ask", async (req, res) => {
   try {
     const answer = await askGemini(phone, userText, topic);
     return res.send(
-      `read_chars=${encodeURIComponent(answer)}&` +
-      `read_chars=${encodeURIComponent("לשאלה נוספת לחץ 1. לתפריט ראשי לחץ 9.")}&` +
+      `read_chars=${answer}&` +
+      `read_chars=לשאלה נוספת לחץ 1. לתפריט ראשי לחץ 9.&` +
       `id_list_message=1_9&` +
       `call_api=https://${host}/ask?topic=${topic}&`
     );
   } catch (err) {
     console.error("שגיאה:", err.message);
     return res.send(
-      `read_chars=${encodeURIComponent("מצטער, אירעה שגיאה. מחזיר לתפריט.")}&` +
+      `read_chars=מצטער, אירעה שגיאה. מחזיר לתפריט.&` +
       `call_api=https://${host}/ivr&`
     );
   }
@@ -117,11 +119,11 @@ app.post("/ask", async (req, res) => {
 // ============================
 function buildMainMenu(host) {
   return (
-    `read_chars=${encodeURIComponent("שלום! ברוך הבא לעוזר החכם.")}&` +
-    `read_chars=${encodeURIComponent("לשאלה כללית לחץ 1.")}&` +
-    `read_chars=${encodeURIComponent("למתכונים ובישול לחץ 2.")}&` +
-    `read_chars=${encodeURIComponent("לעצות בריאות לחץ 3.")}&` +
-    `read_chars=${encodeURIComponent("לשאלות תורה ויהדות לחץ 4.")}&` +
+    `read_chars=שלום! ברוך הבא לעוזר החכם.&` +
+    `read_chars=לשאלה כללית לחץ 1.&` +
+    `read_chars=למתכונים ובישול לחץ 2.&` +
+    `read_chars=לעצות בריאות לחץ 3.&` +
+    `read_chars=לשאלות תורה ויהדות לחץ 4.&` +
     `id_list_message=1_2_3_4&` +
     `call_api=https://${host}/ivr&`
   );
@@ -135,8 +137,8 @@ function buildMenu(topic, host) {
     torah: "תורה ויהדות",
   };
   return (
-    `read_chars=${encodeURIComponent(`בחרת ${names[topic]}.`)}&` +
-    `read_chars=${encodeURIComponent("הקלד את שאלתך ולחץ סולמית.")}&` +
+    `read_chars=בחרת ${names[topic]}.&` +
+    `read_chars=הקלד את שאלתך ולחץ סולמית.&` +
     `read_input=1_30_5_#&` +
     `call_api=https://${host}/ask?topic=${topic}&`
   );
