@@ -68,7 +68,7 @@ app.all("/ivr", async (req, res) => {
   }
 
   if (key === "9" || !key) conversations[phone] = [];
-  return yemotSend(res, `id_list_message=t-שלום ברוכים הבאים&read=t-לכללית 1 מתכונים 2 בריאות 3 יהדות 4=ApiDTMF,1,1,1,Number,no,yes,no&call_api=https://${host}/ivr&`);
+  return yemotSend(res, `id_list_message=t-שלום ברוכים הבאים&read=t-לכללית 1 מתכונים 2 בריאות 3 יהדות 4=ApiDTMF,1,1,1,Number,no,no,no&call_api=https://${host}/ivr&`);
 });
 
 app.listen(process.env.PORT || 3000);
